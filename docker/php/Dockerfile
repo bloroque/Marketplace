@@ -1,17 +1,27 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.2-fpm-alpine
 
+# Installer les dépendances système
 RUN apk add --no-cache \
-    git curl unzip bash \
-    postgresql-dev icu-dev oniguruma-dev libzip-dev
+    git \
+    unzip \
+    libzip-dev \
+    $PHPIZE_DEPS
 
+# Installer l'extension MongoDB
+RUN pecl install mongodb \
+    && docker-php-ext-enable mongodb
+
+# Installer les autres extensions
 RUN docker-php-ext-install \
-    pdo pdo_pgsql intl mbstring zip opcache
+    zip \
+    opcache
 
-RUN pecl install redis && docker-php-ext-enable redis
-
+# Installer Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Créer le dossier si absent
+RUN mkdir -p /var/www/backend
 
 WORKDIR /var/www/backend
 
-RUN adduser -D -u 1000 symfony && chown -R symfony:symfony /var/www
-USER symfony
+CMD ["php-fpm"]
