@@ -1,0 +1,94 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./backend:/var/www/backend
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+      - node
+    networks:
+      - marketplace_network
+
+  php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/var/www/backend
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    environment:
+      DATABASE_URL: postgresql://app:secret@postgres:5432/marketplace?serverVersion=16
+      REDIS_URL: redis://redis:6379
+      MAILER_DSN: smtp://mailpit:1025
+      APP_ENV: dev
+      APP_SECRET: change_me_in_production
+      JWT_SECRET_KEY: "%kernel.project_dir%/config/jwt/private.pem"
+      JWT_PUBLIC_KEY: "%kernel.project_dir%/config/jwt/public.pem"
+      JWT_PASSPHRASE: marketplace_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - marketplace_network
+
+  node:
+    build:
+      context: ./docker/node
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost/api
+    networks:
+      - marketplace_network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: marketplace
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d marketplace"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - marketplace_network
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - marketplace_network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - marketplace_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  marketplace_network:
+    driver: bridge
